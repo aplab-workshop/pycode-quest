@@ -8,9 +8,10 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, ContactShadows, Grid } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrthographicCamera, ContactShadows, Grid, SoftShadows } from '@react-three/drei';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { GROW_TICKS } from '../game/engine.js';
 
 const OFF = 3.5; // grid -> world offset (8x8 island centred on origin)
@@ -19,7 +20,7 @@ const gx = (x) => x - OFF;
 /* ---------------- procedural geometry helpers ---------------- */
 
 function part(geo, color, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = {}) {
-  const g = geo.clone();
+  const g = geo.index ? geo.toNonIndexed() : geo.clone();
   g.applyMatrix4(
     new THREE.Matrix4().compose(
       new THREE.Vector3(...p),
@@ -39,13 +40,13 @@ function part(geo, color, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = {}) 
   return g;
 }
 
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const box = (w, h, d) => new RoundedBoxGeometry(w, h, d, 2, Math.min(0.045, h / 4));
 const cyl = (rt, rb, h, seg = 8) => new THREE.CylinderGeometry(rt, rb, h, seg);
 const cone = (r, h, seg = 7) => new THREE.ConeGeometry(r, h, seg);
 const ico = (r, d = 0) => new THREE.IcosahedronGeometry(r, d);
 const octa = (r) => new THREE.OctahedronGeometry(r, 0);
 
-const CROP_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
+const CROP_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, flatShading: false });
 
 /* Tiles: geo spans y -0.3 .. +0.3, mesh placed at y=-0.3 so the top is y=0 */
 const GRASS_TILE = mergeGeometries([
@@ -74,6 +75,12 @@ const WHEAT = (() => {
   for (const [x, z, tilt] of spots) {
     parts.push(part(cyl(0.028, 0.04, 0.5, 6), '#d7a844', { p: [x, 0.25, z], r: [tilt, 0, -tilt] }));
     parts.push(part(cone(0.075, 0.24, 6), '#eec45f', { p: [x + tilt * 0.5, 0.58, z - tilt * 0.5], r: [tilt, 0, -tilt] }));
+  }
+  for (const [x,z] of spots) {
+    for (let i=0;i<3;i++) for (const side of [-1,1]) {
+      parts.push(part(new THREE.SphereGeometry(.044,6,4), '#ffd57b', {p:[x+side*.045,.45+i*.065,z],s:[.65,1.5,.65],r:[0,0,side*-.6]}));
+    }
+    parts.push(part(cone(.05,.25,5), '#8ba455', {p:[x+.04,.22,z],r:[0,0,-.6],s:[1,1,.35]}));
   }
   return mergeGeometries(parts);
 })();
@@ -110,6 +117,20 @@ const LOG = mergeGeometries([
   part(cyl(0.102, 0.102, 0.03, 8), '#c89a66', { p: [-0.25, 0, 0], r: [0, 0, Math.PI / 2] }),
 ]);
 
+const LAB_TILE = mergeGeometries([
+  part(box(.94,.48,.94), '#35445d', {p:[0,-.06,0]}),
+  part(box(.9,.12,.9), '#d5dfe8', {p:[0,.24,0]}),
+  part(box(.65,.014,.026), '#a7bccd', {p:[0,.307,-.29]}),
+]);
+const LAB_WALL = mergeGeometries([
+  part(box(.86,.16,.86), '#33435e', {p:[0,.08,0]}),
+  part(box(.75,.5,.75), '#72869e', {p:[0,.38,0]}),
+  part(box(.81,.1,.81), '#a5b8ca', {p:[0,.66,0]}),
+  part(box(.42,.045,.012), '#56cede', {p:[0,.43,.382]}),
+  part(box(.012,.045,.42), '#56cede', {p:[.382,.43,0]}),
+]);
+const MARK_COLORS = {frontier:'#f4ba4b', visited:'#55b8ea', path:'#4ed6a0'};
+
 const POP_GEOS = { wheat: WHEAT, wood: LOG, ore: GEM };
 
 /* Axis labels as canvas sprites (no font download needed) */
@@ -139,7 +160,7 @@ function Tiles({ world }) {
           return (
             <mesh
               key={`${x}-${y}`}
-              geometry={soil ? SOIL_TILE : GRASS_TILE}
+              geometry={world.theme === 'lab' ? LAB_TILE : soil ? SOIL_TILE : GRASS_TILE}
               material={CROP_MAT}
               position={[gx(x), -0.3, gx(y)]}
               receiveShadow
@@ -186,7 +207,7 @@ function Crops({ world }) {
       } else if (cell.type === 'ore') {
         items.push(<CropMesh key={key} geo={GEM} x={gx(x)} z={gx(y)} appear={false} />);
       } else if (cell.type === 'rock') {
-        items.push(<CropMesh key={key} geo={ROCK} x={gx(x)} z={gx(y)} appear={false} />);
+        items.push(<CropMesh key={key} geo={world.theme === 'lab' ? LAB_WALL : ROCK} x={gx(x)} z={gx(y)} appear={false} />);
       }
     })
   );
@@ -232,6 +253,7 @@ function TargetPad({ target }) {
 
 /* ---------------- AP Lab mascot robot ---------------- */
 
+const BACKPACK = new RoundedBoxGeometry(.28,.28,.19,3,.04);
 const YAW = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
 const MOLECULE = [
   { p: [0.17, 0.1, 0.02], c: '#3b9af5', r: 0.045 },
@@ -318,6 +340,15 @@ function Mascot({ world, fx, speedMs }) {
   return (
     <group ref={root} scale={0.8}>
       <group ref={yawGroup}>
+        {/* mechanical backpack, shoulder joints and flight stabilizers */}
+        <mesh position={[0,.25,-.19]} castShadow>
+          <primitive object={BACKPACK} attach="geometry" />
+          <meshStandardMaterial color="#283851" metalness={.55} roughness={.28} />
+        </mesh>
+        {[-1,1].map(side => <group key={side} position={[side*.24,.2,0]}>
+          <mesh rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[.065,.065,.08,16]}/><meshStandardMaterial color="#36475c" metalness={.65} roughness={.25}/></mesh>
+          <mesh position={[side*.025,-.05,-.08]} rotation={[Math.PI/2,0,0]}><torusGeometry args={[.07,.015,8,20]}/><meshStandardMaterial color="#69e3f4" emissive="#39cce5" emissiveIntensity={1.3}/></mesh>
+        </group>)}
         {/* head */}
         <mesh position={[0, 0.62, 0]} scale={[1, 0.95, 1]} castShadow>
           <sphereGeometry args={[0.34, 24, 18]} />
@@ -341,6 +372,7 @@ function Mascot({ world, fx, speedMs }) {
           <sphereGeometry args={[0.048, 12, 10]} />
           <meshStandardMaterial color="#17191f" roughness={0.2} />
         </mesh>
+        {[-.095,.095].map(x=><mesh key={x} position={[x-.013,.685,.409]}><sphereGeometry args={[.012,8,6]}/><meshBasicMaterial color="white"/></mesh>)}
         {/* direction LED on the forehead */}
         <mesh position={[0, 0.84, 0.27]}>
           <sphereGeometry args={[0.025, 10, 8]} />
@@ -445,63 +477,73 @@ function FxLayer({ fx }) {
 
 /* ---------------- main component ---------------- */
 
-export default function GameWorld3D({ world, fx, speedMs }) {
-  const controls = useRef();
-  const dirKey = useMemo(() => `${world.width}x${world.height}`, [world.width, world.height]);
-  return (
-    <div className="world3d">
-      <Canvas shadows dpr={[1, 1.75]}>
-        <color attach="background" args={['#f2f5fa']} />
-        <OrthographicCamera makeDefault position={[12, 12.5, 12]} zoom={54} near={0.1} far={100} />
-        <ambientLight intensity={0.85} />
-        <hemisphereLight args={['#ffffff', '#dfe6ef', 0.5]} />
-        <directionalLight
-          position={[7, 12, 5]}
-          intensity={1.9}
-          castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
-          shadow-camera-left={-7.5}
-          shadow-camera-right={7.5}
-          shadow-camera-top={7.5}
-          shadow-camera-bottom={-7.5}
-          shadow-camera-far={40}
-          shadow-normalBias={0.04}
-        />
-        <group key={dirKey}>
-          <Tiles world={world} />
-          <Crops world={world} />
-          <TargetPad target={world.target} />
-          <Mascot world={world} fx={fx} speedMs={speedMs} />
-          <FxLayer fx={fx} />
-        </group>
-        <ContactShadows position={[0, -0.6, 0]} opacity={0.32} scale={17} blur={2.6} far={3.2} resolution={512} />
-        <Grid
-          position={[0, -0.63, 0]}
-          args={[40, 40]}
-          cellSize={1}
-          cellThickness={0.6}
-          cellColor="#dde3ee"
-          sectionSize={4}
-          sectionThickness={1.1}
-          sectionColor="#c9d2e2"
-          fadeDistance={36}
-          fadeStrength={1}
-          infiniteGrid
-        />
-        <OrbitControls
-          ref={controls}
-          target={[0, 0.1, 0]}
-          enableDamping
-          dampingFactor={0.1}
-          minZoom={24}
-          maxZoom={190}
-          maxPolarAngle={Math.PI / 2.05}
-        />
-      </Canvas>
-      <button className="view-reset" onClick={() => controls.current?.reset()} title="กลับสู่มุมมองเริ่มต้น">
-        ⟲ Reset View
-      </button>
+const VIEWS = [
+  {name:'ISO', label:'มุมเฉียง', pos:[12,13,12]},
+  {name:'TOP', label:'มุมบน', pos:[0,20,.001]},
+  {name:'NORTH', label:'มุมกลับ', pos:[-12,13,-12]},
+];
+function FixedCamera({view}) {
+  const {camera, size} = useThree();
+  const destination = useMemo(()=>new THREE.Vector3(...VIEWS[view].pos),[view]);
+  useFrame((_,dt)=>{
+    camera.position.lerp(destination,1-Math.exp(-dt*7));
+    camera.lookAt(0,.15,0);
+    // Fit the entire island, including coordinate labels, on narrow screens.
+    const zoom = Math.min(size.width/13.8, size.height/11.8);
+    if(Math.abs(camera.zoom-zoom)>.01) {camera.zoom=zoom;camera.updateProjectionMatrix();}
+  });
+  return null;
+}
+function SearchMarks({world}) {
+  return <group>{Object.entries(world.marks || {}).map(([key,color])=>{
+    const [x,y]=key.split(',').map(Number);
+    return <mesh key={key} position={[gx(x),.018,gx(y)]} rotation={[-Math.PI/2,0,0]}>
+      <planeGeometry args={[.8,.8]}/><meshBasicMaterial color={MARK_COLORS[color]} transparent opacity={.75}/>
+    </mesh>;
+  })}</group>;
+}
+function Plinth({lab}) {
+  return <group>
+    <mesh position={[0,-.64,0]} receiveShadow castShadow>
+      <primitive object={PLINTH} attach="geometry"/>
+      <meshStandardMaterial color={lab?'#26364f':'#e3cfb6'} roughness={.5} metalness={lab?.3:0}/>
+    </mesh>
+    {[-1,1].map(side=><mesh key={side} position={[0,-.6,side*4.16]}>
+      <boxGeometry args={[6.8,.035,.018]}/><meshStandardMaterial color={lab?'#69d4e5':'#f0ad65'} emissive={lab?'#29a4bd':'#000000'} emissiveIntensity={.7}/>
+    </mesh>)}
+    {[-3.7,3.7].flatMap(x=>[-3.7,3.7].map(z=><mesh key={`${x},${z}`} position={[x,-.87,z]} castShadow>
+      <cylinderGeometry args={[.2,.28,.23,12]}/><meshStandardMaterial color="#44516a" metalness={.5} roughness={.4}/>
+    </mesh>))}
+  </group>;
+}
+const PLINTH = new RoundedBoxGeometry(8.45,.35,8.45,3,.12);
+
+export default function GameWorld3D({world,fx,speedMs}) {
+  const [view,setView]=useState(0);
+  const lab=world.theme==='lab';
+  return <div className={`world3d ${lab?'lab-world':''}`}>
+    <div className="world-label"><span>{lab?'SUBLEVEL 02 / SEARCH VAULT':'SURFACE 01 / AUTOMATION GARDEN'}</span><small>AP LAB · SIMULATION</small></div>
+    <Canvas shadows dpr={[1,1.75]} gl={{antialias:true}}>
+      <color attach="background" args={[lab?'#e7edf4':'#f4f3ef']}/>
+      <OrthographicCamera makeDefault position={[12,13,12]} zoom={40} near={.1} far={100}/>
+      <FixedCamera view={view}/>
+      <SoftShadows size={12} samples={8} focus={.5}/>
+      <ambientLight intensity={.65}/>
+      <hemisphereLight args={['#f7fbff','#b4a8a0',.7]}/>
+      <directionalLight position={[5,12,4]} intensity={2.5} castShadow shadow-mapSize={[2048,2048]} shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={8} shadow-camera-bottom={-8} shadow-camera-far={40} shadow-normalBias={.035}/>
+      <directionalLight position={[-6,5,-5]} intensity={1.1} color="#abd8ff"/>
+      <Plinth lab={lab}/>
+      <Tiles world={world}/><SearchMarks world={world}/><Crops world={world}/>
+      <TargetPad target={world.target}/>
+      <Mascot key={world.theme} world={world} fx={fx} speedMs={speedMs}/>
+      <FxLayer fx={fx}/>
+      <ContactShadows position={[0,-1.02,0]} opacity={.35} scale={19} blur={2.5} far={4} resolution={512}/>
+      <Grid position={[0,-1.04,0]} args={[40,40]} cellSize={1} cellThickness={.5} cellColor="#d3dbe3" sectionSize={4} sectionThickness={1} sectionColor="#bbc8d6" fadeDistance={30} infiniteGrid/>
+    </Canvas>
+    {lab && <div className="search-legend"><span className="frontier">● รอค้นหา</span><span className="visited">● สำรวจแล้ว</span><span className="path">● เส้นทาง</span></div>}
+    <div className="view-controls" role="group" aria-label="มุมกล้อง">
+      <span>VIEW</span>{VIEWS.map((v,i)=><button key={v.name} onClick={()=>setView(i)} className={view===i?'selected':''} aria-pressed={view===i} title={v.label}>{v.name}</button>)}
+      <button onClick={()=>setView(0)} title="คืนมุมมองเริ่มต้น">↺</button>
     </div>
-  );
+  </div>;
 }

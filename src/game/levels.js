@@ -1,3 +1,4 @@
+import { ch2Levels } from './searchLevels.js';
 /**
  * Curriculum: chapters -> levels.
  *
@@ -170,8 +171,7 @@ export const chapters = [
     id: 2,
     title: 'บทที่ 2: State Space Searching',
     description: 'เขาวงกตและสิ่งกีดขวาง เขียน BFS และ DFS เพื่อหาเส้นทางไปเป้าหมาย',
-    levels: [],
-    comingSoon: true,
+    levels: ch2Levels,
   },
   {
     id: 3,
@@ -203,6 +203,10 @@ export function findLevel(id) {
 }
 
 export const API_REFERENCE = [
+  { sig: 'get_map()', desc: 'แผนที่เป็น list ของ string: map[y][x] เป็น . ทางเดิน หรือ # กำแพง' },
+  { sig: 'get_target()', desc: 'พิกัดแท่นข้อมูล {"x": ..., "y": ...}' },
+  { sig: 'can_move("right")', desc: 'ตรวจทาง up/down/left/right โดยไม่เดินและไม่ใช้เวลา' },
+  { sig: 'mark(x, y, "visited")', desc: 'แสดงสีทีละจังหวะ: visited ฟ้า / frontier ทอง / path เขียว โดยไม่เพิ่มก้าวเดิน' },
   { sig: 'move_up() / move_down()', desc: 'เดินขึ้น / ลง 1 ช่อง (คืน True ถ้าเดินได้)' },
   { sig: 'move_left() / move_right()', desc: 'เดินซ้าย / ขวา 1 ช่อง' },
   { sig: 'harvest()', desc: 'เก็บข้าวสุก ต้นไม้ หรือแร่ในช่องปัจจุบัน' },

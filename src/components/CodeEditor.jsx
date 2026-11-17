@@ -42,6 +42,10 @@ const gameCompletions = pythonLanguage.data.of({
       ['get_x()', 'พิกัด x'],
       ['get_y()', 'พิกัด y'],
       ['get_world_size()', 'ขนาดแผนที่'],
+      ['get_map()', 'แผนที่ . และ # (อ่านด้วย map[y][x])'],
+      ['get_target()', 'เป้าหมาย dict x, y'],
+      ['can_move("right")', 'ตรวจทางเดิน'],
+      ['mark(x, y, "visited")', 'สี visited / frontier / path'],
     ].map(([label, detail]) => ({ label, detail, type: 'function', apply: label }))
   ),
 });

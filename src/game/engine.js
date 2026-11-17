@@ -44,6 +44,9 @@ export function createWorld(level) {
     target: level.target ? { ...level.target } : null,
     inventory: { wheat: 0, wood: 0, ore: 0 },
     tick: 0,
+    theme: level.theme || 'farm',
+    marks: {},
+    stats: { moves: 0, explored: 0 },
   };
 }
 
@@ -85,6 +88,7 @@ export function performAction(world, name, arg) {
       const inside = nx >= 0 && ny >= 0 && nx < world.width && ny < world.height;
       const free = inside && world.cells[ny][nx].type !== 'rock';
       if (free) {
+        world.stats.moves += 1;
         robot.x = nx;
         robot.y = ny;
       }
@@ -121,6 +125,25 @@ export function performAction(world, name, arg) {
       return { value: ok, timed: true, action: ok ? 'plant' : 'fail', detail: ok ? 'wheat' : null };
     }
 
+    case 'get_map':
+      return { value: world.cells.map(row => row.map(c => c.type === 'rock' ? '#' : '.').join('')), timed: false };
+    case 'get_target':
+      return { value: world.target, timed: false };
+    case 'can_move': {
+      const d = DIRS[arg];
+      if (!d) throw new Error('Direction must be up, down, left or right');
+      const x = robot.x + d[0], y = robot.y + d[1];
+      return { value: x >= 0 && y >= 0 && x < world.width && y < world.height && world.cells[y][x].type !== 'rock', timed: false };
+    }
+    case 'mark': {
+      const [x, y, color] = JSON.parse(arg);
+      if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= world.width || y >= world.height || world.cells[y][x].type === 'rock') throw new Error('mark: choose a walkable cell inside the map');
+      if (!['visited', 'frontier', 'path'].includes(color)) throw new Error('mark: use visited, frontier or path');
+      const key = `${x},${y}`;
+      if (!world.marks[key]) world.stats.explored += 1;
+      world.marks[key] = color;
+      return { value: true, timed: true, action: 'mark', detail: color };
+    }
     case 'scan':
       return {
         value: {

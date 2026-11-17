@@ -222,3 +222,18 @@ code { font-family: Consolas, 'Cascadia Code', monospace; }
   .pane.left { min-height: 100vh; }
   .pane.right { height: 100vh; }
 }
+.world-label {position:absolute;top:14px;left:18px;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:4px;font:10px Consolas,monospace;letter-spacing:1.2px;color:#536982}
+.world-label small {font-size:8px;color:#8c9aab}
+.view-controls {position:absolute;bottom:16px;left:16px;z-index:3;display:flex;align-items:center;gap:4px;background:#fffdf8ed;padding:6px;border:1px solid #d3dce6;border-radius:12px;box-shadow:0 4px 15px #22334b12}
+.view-controls span {font:10px Consolas,monospace;color:#8491a5;padding:0 5px}
+.view-controls button {border:0;background:transparent;color:#52647b;font:11px Consolas,monospace;padding:8px 10px;border-radius:7px;cursor:pointer}
+.view-controls button.selected {background:#24334d;color:white}
+.view-controls button:hover {background:#f1662a;color:white}
+.search-legend {position:absolute;bottom:68px;left:18px;display:flex;gap:12px;font-size:11px;background:#ffffffd9;padding:5px 9px;border-radius:8px;pointer-events:none}
+.frontier {color:#b78017}.visited {color:#2589c2}.path {color:#218a64}
+.world3d canvas {touch-action:auto!important}
+.resource {gap:5px}
+@media(max-width:600px){.world-label{font-size:8px;left:10px}.view-controls{bottom:8px;left:8px}.search-legend{bottom:58px;font-size:10px}}
+
+.world-area .verdict {top:54px;bottom:auto}
+.menu-btn {white-space:nowrap}

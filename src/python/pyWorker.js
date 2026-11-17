@@ -70,6 +70,18 @@ def get_world_size():
     """ขนาดของแผนที่ (จำนวนช่องต่อด้าน)"""
     return _act("get_world_size")
 
+def get_map():
+    return _act("get_map")
+
+def get_target():
+    return _act("get_target")
+
+def can_move(direction):
+    return _act("can_move", direction)
+
+def mark(x, y, color="visited"):
+    return _act("mark", _json.dumps([x, y, color]))
+
 def print(*args, **kwargs):
     _game.mark(_line())
     _builtins.print(*args, **kwargs)
@@ -79,7 +91,8 @@ _EXPORTS = {
     "move_left": move_left, "move_right": move_right,
     "harvest": harvest, "plant": plant, "scan": scan,
     "get_x": get_x, "get_y": get_y, "get_world_size": get_world_size,
-    "print": print,
+    "print": print, "get_map": get_map, "get_target": get_target,
+    "can_move": can_move, "mark": mark,
 }
 
 def _make_ns():
@@ -110,7 +123,7 @@ const gameModule = {
     if (!ctx) return JSON.stringify({ error: 'ไม่มีการรันที่กำลังทำงาน' });
     ctx.lastLine = line;
     try {
-      const probe = name === 'move' || name === 'harvest' || name === 'plant';
+      const probe = name === 'move' || name === 'harvest' || name === 'plant' || name === 'mark';
       if (probe && ctx.actions >= ACTION_LIMIT) {
         return JSON.stringify({
           error: `หุ่นยนต์ทำงานเกิน ${ACTION_LIMIT} คำสั่งแล้ว (อาจมีลูปไม่รู้จบ)`,
