@@ -12,10 +12,11 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrthographicCamera, ContactShadows, Grid, SoftShadows } from '@react-three/drei';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { GROW_TICKS } from '../game/engine.js';
+import { GROW_TICKS, TERRAIN_COST } from '../game/engine.js';
 
-const OFF = 3.5; // grid -> world offset (8x8 island centred on origin)
-const gx = (x) => x - OFF;
+// grid -> world: islands of any size are centred on the origin
+const gx = (v, off) => v - off;
+const offOf = (world) => (world.width - 1) / 2;
 
 /* ---------------- procedural geometry helpers ---------------- */
 
@@ -117,6 +118,29 @@ const LOG = mergeGeometries([
   part(cyl(0.102, 0.102, 0.03, 8), '#c89a66', { p: [-0.25, 0, 0], r: [0, 0, Math.PI / 2] }),
 ]);
 
+/* Chapter 3 terrain tiles (energy costs: sand 2, mud 4, snow 7) */
+const SAND_TILE = mergeGeometries([
+  part(box(0.94, 0.44, 0.94), '#c9a263', { p: [0, -0.08, 0] }),
+  part(box(0.94, 0.16, 0.94), '#ecd29a', { p: [0, 0.22, 0] }),
+  part(box(0.5, 0.03, 0.07), '#dcbf82', { p: [-0.1, 0.31, -0.2], r: [0, 0.3, 0] }),
+  part(box(0.4, 0.03, 0.07), '#dcbf82', { p: [0.15, 0.31, 0.15], r: [0, -0.25, 0] }),
+]);
+const MUD_TILE = mergeGeometries([
+  part(box(0.94, 0.44, 0.94), '#53371f', { p: [0, -0.08, 0] }),
+  part(box(0.94, 0.16, 0.94), '#6e4b27', { p: [0, 0.22, 0] }),
+  part(cyl(0.26, 0.29, 0.035, 12), '#45301c', { p: [-0.13, 0.3, 0.1] }),
+  part(cyl(0.15, 0.17, 0.035, 10), '#45301c', { p: [0.25, 0.3, -0.23] }),
+  part(ico(0.05), '#7d5a33', { p: [0.2, 0.32, 0.26] }),
+]);
+const SNOW_TILE = mergeGeometries([
+  part(box(0.94, 0.44, 0.94), '#9fb4c8', { p: [0, -0.08, 0] }),
+  part(box(0.94, 0.18, 0.94), '#f0f5fb', { p: [0, 0.21, 0] }),
+  part(ico(0.085), '#d3e6f6', { p: [-0.22, 0.32, 0.18], r: [0.3, 0.5, 0] }),
+  part(ico(0.055), '#d3e6f6', { p: [0.24, 0.31, -0.2], r: [0.1, 0.2, 0.4] }),
+  part(octa(0.06), '#bfe0f2', { p: [0.1, 0.33, 0.1], s: [1, 1.5, 1] }),
+]);
+const TERRAIN_TILES = { sand: SAND_TILE, mud: MUD_TILE, snow: SNOW_TILE };
+
 const LAB_TILE = mergeGeometries([
   part(box(.94,.48,.94), '#35445d', {p:[0,-.06,0]}),
   part(box(.9,.12,.9), '#d5dfe8', {p:[0,.24,0]}),
@@ -133,49 +157,64 @@ const MARK_COLORS = {frontier:'#f4ba4b', visited:'#55b8ea', path:'#4ed6a0'};
 
 const POP_GEOS = { wheat: WHEAT, wood: LOG, ore: GEM };
 
-/* Axis labels as canvas sprites (no font download needed) */
-function makeLabel(text) {
+/* Axis / cost labels as canvas sprites (no font download needed) */
+function makeLabel(text, color = '#95a1b8') {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
-  g.font = 'bold 42px Consolas, monospace';
+  g.font = `bold ${text.length > 1 ? 34 : 42}px Consolas, monospace`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillStyle = '#95a1b8';
+  g.fillStyle = color;
   g.fillText(text, 32, 36);
   const t = new THREE.CanvasTexture(c);
   t.anisotropy = 4;
   return t;
 }
-const LABELS = Array.from({ length: 8 }, (_, i) => makeLabel(String(i)));
+const axisCache = [];
+const axisTex = (i) => (axisCache[i] ??= makeLabel(String(i)));
+const COST_TEX = { 2: makeLabel('2', '#8a6b35'), 4: makeLabel('4', '#f3e3c9'), 7: makeLabel('7', '#7c93ad') };
 
 /* ---------------- scene pieces ---------------- */
 
 function Tiles({ world }) {
+  const off = offOf(world);
+  const peak = world.theme === 'peak';
   return (
     <group>
       {world.cells.map((row, y) =>
         row.map((cell, x) => {
           const soil = cell.type === 'soil' || cell.type === 'wheat';
+          const cost = TERRAIN_COST[cell.type];
           return (
-            <mesh
-              key={`${x}-${y}`}
-              geometry={world.theme === 'lab' ? LAB_TILE : soil ? SOIL_TILE : GRASS_TILE}
-              material={CROP_MAT}
-              position={[gx(x), -0.3, gx(y)]}
-              receiveShadow
-              castShadow
-            />
+            <React.Fragment key={`${x}-${y}`}>
+              <mesh
+                geometry={
+                  world.theme === 'lab'
+                    ? LAB_TILE
+                    : TERRAIN_TILES[cell.type] || (soil ? SOIL_TILE : GRASS_TILE)
+                }
+                material={CROP_MAT}
+                position={[gx(x, off), -0.3, gx(y, off)]}
+                receiveShadow
+                castShadow
+              />
+              {peak && cost && (
+                <sprite position={[gx(x, off) + 0.3, 0.16, gx(y, off) + 0.31]} scale={0.3}>
+                  <spriteMaterial map={COST_TEX[cost]} transparent depthWrite={false} />
+                </sprite>
+              )}
+            </React.Fragment>
           );
         })
       )}
-      {LABELS.map((tex, i) => (
+      {Array.from({ length: world.width }, (_, i) => (
         <React.Fragment key={i}>
-          <sprite position={[gx(i), 0.18, -OFF - 0.95]} scale={0.42}>
-            <spriteMaterial map={tex} transparent depthWrite={false} />
+          <sprite position={[gx(i, off), 0.18, -off - 0.95]} scale={0.42}>
+            <spriteMaterial map={axisTex(i)} transparent depthWrite={false} />
           </sprite>
-          <sprite position={[-OFF - 0.95, 0.18, gx(i)]} scale={0.42}>
-            <spriteMaterial map={tex} transparent depthWrite={false} />
+          <sprite position={[-off - 0.95, 0.18, gx(i, off)]} scale={0.42}>
+            <spriteMaterial map={axisTex(i)} transparent depthWrite={false} />
           </sprite>
         </React.Fragment>
       ))}
@@ -194,6 +233,7 @@ function CropMesh({ geo, x, z, scale = 1, appear = true }) {
 }
 
 function Crops({ world }) {
+  const off = offOf(world);
   const items = [];
   world.cells.forEach((row, y) =>
     row.forEach((cell, x) => {
@@ -201,20 +241,20 @@ function Crops({ world }) {
       if (cell.type === 'wheat') {
         const ripe = cell.growth >= GROW_TICKS;
         const s = ripe ? 1 : 0.35 + 0.6 * (cell.growth / GROW_TICKS);
-        items.push(<CropMesh key={key} geo={ripe ? WHEAT : SPROUT} x={gx(x)} z={gx(y)} scale={s} />);
+        items.push(<CropMesh key={key} geo={ripe ? WHEAT : SPROUT} x={gx(x, off)} z={gx(y, off)} scale={s} />);
       } else if (cell.type === 'tree') {
-        items.push(<CropMesh key={key} geo={TREE} x={gx(x)} z={gx(y)} appear={false} />);
+        items.push(<CropMesh key={key} geo={TREE} x={gx(x, off)} z={gx(y, off)} appear={false} />);
       } else if (cell.type === 'ore') {
-        items.push(<CropMesh key={key} geo={GEM} x={gx(x)} z={gx(y)} appear={false} />);
+        items.push(<CropMesh key={key} geo={GEM} x={gx(x, off)} z={gx(y, off)} appear={false} />);
       } else if (cell.type === 'rock') {
-        items.push(<CropMesh key={key} geo={world.theme === 'lab' ? LAB_WALL : ROCK} x={gx(x)} z={gx(y)} appear={false} />);
+        items.push(<CropMesh key={key} geo={world.theme === 'lab' ? LAB_WALL : ROCK} x={gx(x, off)} z={gx(y, off)} appear={false} />);
       }
     })
   );
   return <group>{items}</group>;
 }
 
-function TargetPad({ target }) {
+function TargetPad({ target, off }) {
   const mat = useRef();
   const ring = useRef();
   useFrame(({ clock }) => {
@@ -227,8 +267,8 @@ function TargetPad({ target }) {
     }
   });
   if (!target) return null;
-  const x = gx(target.x);
-  const z = gx(target.y);
+  const x = gx(target.x, off);
+  const z = gx(target.y, off);
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, 0.035, 0]} receiveShadow>
@@ -278,7 +318,7 @@ function Mascot({ world, fx, speedMs }) {
   const root = useRef();
   const yawGroup = useRef();
   const spin = useRef();
-  const pos = useRef(new THREE.Vector3(gx(world.robot.x), 0, gx(world.robot.y)));
+  const pos = useRef(new THREE.Vector3(gx(world.robot.x, offOf(world)), 0, gx(world.robot.y, offOf(world))));
   const vel = useRef(new THREE.Vector3());
   const yaw = useRef(YAW[world.robot.dir] ?? 0);
   const anim = useRef(null);
@@ -299,7 +339,8 @@ function Mascot({ world, fx, speedMs }) {
     if (!g) return;
 
     // glide toward the robot's grid cell, speed tied to the queue tempo
-    const target = _v1.set(gx(world.robot.x), 0, gx(world.robot.y));
+    const off = offOf(world);
+    const target = _v1.set(gx(world.robot.x, off), 0, gx(world.robot.y, off));
     const rate = Math.min(18, 5200 / speedMs);
     const k = 1 - Math.exp(-dt * rate);
     const delta = _v2.copy(target).sub(pos.current);
@@ -458,12 +499,12 @@ function Pop({ kind, x, z }) {
   );
 }
 
-function FxLayer({ fx }) {
+function FxLayer({ fx, off }) {
   const [pops, setPops] = useState([]);
   useEffect(() => {
     if (!fx || fx.action !== 'harvest' || !fx.detail || !POP_GEOS[fx.detail]) return;
     const id = fx.id;
-    setPops((p) => [...p.slice(-11), { id, kind: fx.detail, x: gx(fx.x), z: gx(fx.y) }]);
+    setPops((p) => [...p.slice(-11), { id, kind: fx.detail, x: gx(fx.x, off), z: gx(fx.y, off) }]);
     setTimeout(() => setPops((p) => p.filter((q) => q.id !== id)), 950);
   }, [fx?.id, fx]);
   return (
@@ -482,65 +523,82 @@ const VIEWS = [
   {name:'TOP', label:'มุมบน', pos:[0,20,.001]},
   {name:'NORTH', label:'มุมกลับ', pos:[-12,13,-12]},
 ];
-function FixedCamera({view}) {
+function FixedCamera({view, gridSize}) {
   const {camera, size} = useThree();
   const destination = useMemo(()=>new THREE.Vector3(...VIEWS[view].pos),[view]);
   useFrame((_,dt)=>{
     camera.position.lerp(destination,1-Math.exp(-dt*7));
     camera.lookAt(0,.15,0);
     // Fit the entire island, including coordinate labels, on narrow screens.
-    const zoom = Math.min(size.width/13.8, size.height/11.8);
+    const zoom = Math.min(size.width/(gridSize+5.8), size.height/(gridSize+3.8));
     if(Math.abs(camera.zoom-zoom)>.01) {camera.zoom=zoom;camera.updateProjectionMatrix();}
   });
   return null;
 }
 function SearchMarks({world}) {
+  const off = offOf(world);
   return <group>{Object.entries(world.marks || {}).map(([key,color])=>{
     const [x,y]=key.split(',').map(Number);
-    return <mesh key={key} position={[gx(x),.018,gx(y)]} rotation={[-Math.PI/2,0,0]}>
+    return <mesh key={key} position={[gx(x,off),.025,gx(y,off)]} rotation={[-Math.PI/2,0,0]}>
       <planeGeometry args={[.8,.8]}/><meshBasicMaterial color={MARK_COLORS[color]} transparent opacity={.75}/>
     </mesh>;
   })}</group>;
 }
-function Plinth({lab}) {
+const PLINTH_COLORS = {
+  farm: { base: '#e3cfb6', strip: '#f0ad65', glow: '#000000' },
+  lab: { base: '#26364f', strip: '#69d4e5', glow: '#29a4bd' },
+  peak: { base: '#aebdc9', strip: '#e8f2fa', glow: '#9fc4dd' },
+};
+function Plinth({theme, size}) {
+  const geo = useMemo(()=>new RoundedBoxGeometry(size+.45,.35,size+.45,3,.12),[size]);
+  const c = PLINTH_COLORS[theme] || PLINTH_COLORS.farm;
+  const leg = size/2-.3;
   return <group>
     <mesh position={[0,-.64,0]} receiveShadow castShadow>
-      <primitive object={PLINTH} attach="geometry"/>
-      <meshStandardMaterial color={lab?'#26364f':'#e3cfb6'} roughness={.5} metalness={lab?.3:0}/>
+      <primitive object={geo} attach="geometry"/>
+      <meshStandardMaterial color={c.base} roughness={.5} metalness={theme==='lab'?.3:0}/>
     </mesh>
-    {[-1,1].map(side=><mesh key={side} position={[0,-.6,side*4.16]}>
-      <boxGeometry args={[6.8,.035,.018]}/><meshStandardMaterial color={lab?'#69d4e5':'#f0ad65'} emissive={lab?'#29a4bd':'#000000'} emissiveIntensity={.7}/>
+    {[-1,1].map(side=><mesh key={side} position={[0,-.6,side*(size/2+.16)]}>
+      <boxGeometry args={[size-1.2,.035,.018]}/><meshStandardMaterial color={c.strip} emissive={c.glow} emissiveIntensity={.7}/>
     </mesh>)}
-    {[-3.7,3.7].flatMap(x=>[-3.7,3.7].map(z=><mesh key={`${x},${z}`} position={[x,-.87,z]} castShadow>
+    {[-leg,leg].flatMap(x=>[-leg,leg].map(z=><mesh key={`${x},${z}`} position={[x,-.87,z]} castShadow>
       <cylinderGeometry args={[.2,.28,.23,12]}/><meshStandardMaterial color="#44516a" metalness={.5} roughness={.4}/>
     </mesh>))}
   </group>;
 }
-const PLINTH = new RoundedBoxGeometry(8.45,.35,8.45,3,.12);
+
+const WORLD_LABELS = {
+  farm: 'SURFACE 01 / AUTOMATION GARDEN',
+  lab: 'SUBLEVEL 02 / SEARCH VAULT',
+  peak: 'SUMMIT 03 / HEURISTIC RIDGE',
+};
+const BACKGROUNDS = { farm: '#f4f3ef', lab: '#e7edf4', peak: '#eef3f6' };
 
 export default function GameWorld3D({world,fx,speedMs}) {
   const [view,setView]=useState(0);
   const lab=world.theme==='lab';
+  const off=offOf(world);
+  const shadowSpan=world.width/2+4;
   return <div className={`world3d ${lab?'lab-world':''}`}>
-    <div className="world-label"><span>{lab?'SUBLEVEL 02 / SEARCH VAULT':'SURFACE 01 / AUTOMATION GARDEN'}</span><small>AP LAB · SIMULATION</small></div>
+    <div className="world-label"><span>{WORLD_LABELS[world.theme]||WORLD_LABELS.farm}</span><small>AP LAB · SIMULATION</small></div>
     <Canvas shadows dpr={[1,1.75]} gl={{antialias:true}}>
-      <color attach="background" args={[lab?'#e7edf4':'#f4f3ef']}/>
+      <color attach="background" args={[BACKGROUNDS[world.theme]||BACKGROUNDS.farm]}/>
       <OrthographicCamera makeDefault position={[12,13,12]} zoom={40} near={.1} far={100}/>
-      <FixedCamera view={view}/>
+      <FixedCamera view={view} gridSize={world.width}/>
       <SoftShadows size={12} samples={8} focus={.5}/>
       <ambientLight intensity={.65}/>
       <hemisphereLight args={['#f7fbff','#b4a8a0',.7]}/>
-      <directionalLight position={[5,12,4]} intensity={2.5} castShadow shadow-mapSize={[2048,2048]} shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={8} shadow-camera-bottom={-8} shadow-camera-far={40} shadow-normalBias={.035}/>
+      <directionalLight position={[5,12,4]} intensity={2.5} castShadow shadow-mapSize={[2048,2048]} shadow-camera-left={-shadowSpan} shadow-camera-right={shadowSpan} shadow-camera-top={shadowSpan} shadow-camera-bottom={-shadowSpan} shadow-camera-far={40} shadow-normalBias={.035}/>
       <directionalLight position={[-6,5,-5]} intensity={1.1} color="#abd8ff"/>
-      <Plinth lab={lab}/>
+      <Plinth theme={world.theme} size={world.width}/>
       <Tiles world={world}/><SearchMarks world={world}/><Crops world={world}/>
-      <TargetPad target={world.target}/>
+      <TargetPad target={world.target} off={off}/>
       <Mascot key={world.theme} world={world} fx={fx} speedMs={speedMs}/>
-      <FxLayer fx={fx}/>
-      <ContactShadows position={[0,-1.02,0]} opacity={.35} scale={19} blur={2.5} far={4} resolution={512}/>
+      <FxLayer fx={fx} off={off}/>
+      <ContactShadows position={[0,-1.02,0]} opacity={.35} scale={world.width*2.4} blur={2.5} far={4} resolution={512}/>
       <Grid position={[0,-1.04,0]} args={[40,40]} cellSize={1} cellThickness={.5} cellColor="#d3dbe3" sectionSize={4} sectionThickness={1} sectionColor="#bbc8d6" fadeDistance={30} infiniteGrid/>
     </Canvas>
-    {lab && <div className="search-legend"><span className="frontier">● รอค้นหา</span><span className="visited">● สำรวจแล้ว</span><span className="path">● เส้นทาง</span></div>}
+    {world.theme!=='farm' && <div className="search-legend"><span className="frontier">● รอค้นหา</span><span className="visited">● สำรวจแล้ว</span><span className="path">● เส้นทาง</span></div>}
     <div className="view-controls" role="group" aria-label="มุมกล้อง">
       <span>VIEW</span>{VIEWS.map((v,i)=><button key={v.name} onClick={()=>setView(i)} className={view===i?'selected':''} aria-pressed={view===i} title={v.label}>{v.name}</button>)}
       <button onClick={()=>setView(0)} title="คืนมุมมองเริ่มต้น">↺</button>

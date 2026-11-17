@@ -73,6 +73,14 @@ def get_world_size():
 def get_map():
     return _act("get_map")
 
+def get_cost_map():
+    """ตารางพลังงานของทุกช่อง: cost[y][x] คือพลังงานที่ใช้เมื่อเดินเข้าช่องนั้น (None = กำแพง)"""
+    return _act("get_cost_map")
+
+def get_energy():
+    """พลังงานทั้งหมดที่ใช้เดินไปแล้วในรอบนี้"""
+    return _act("get_energy")
+
 def get_target():
     return _act("get_target")
 
@@ -93,6 +101,7 @@ _EXPORTS = {
     "get_x": get_x, "get_y": get_y, "get_world_size": get_world_size,
     "print": print, "get_map": get_map, "get_target": get_target,
     "can_move": can_move, "mark": mark,
+    "get_cost_map": get_cost_map, "get_energy": get_energy,
 }
 
 def _make_ns():

@@ -46,6 +46,8 @@ const gameCompletions = pythonLanguage.data.of({
       ['get_target()', 'เป้าหมาย dict x, y'],
       ['can_move("right")', 'ตรวจทางเดิน'],
       ['mark(x, y, "visited")', 'สี visited / frontier / path'],
+      ['get_cost_map()', 'ตารางพลังงาน cost[y][x] (None = กำแพง)'],
+      ['get_energy()', 'พลังงานที่ใช้ไปแล้ว'],
     ].map(([label, detail]) => ({ label, detail, type: 'function', apply: label }))
   ),
 });

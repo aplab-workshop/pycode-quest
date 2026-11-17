@@ -1,4 +1,5 @@
 import { ch2Levels } from './searchLevels.js';
+import { ch3Levels } from './heuristicLevels.js';
 /**
  * Curriculum: chapters -> levels.
  *
@@ -176,9 +177,8 @@ export const chapters = [
   {
     id: 3,
     title: 'บทที่ 3: Heuristic Algorithms',
-    description: 'แผนที่ใหญ่ที่แต่ละช่องใช้พลังงานต่างกัน เขียน A* Search หาเส้นทางที่ประหยัดที่สุด',
-    levels: [],
-    comingSoon: true,
+    description: 'แผนที่ใหญ่ที่แต่ละช่องใช้พลังงานต่างกัน เขียน Greedy Best-First และ A* Search หาเส้นทางที่ประหยัดที่สุด',
+    levels: ch3Levels,
   },
   {
     id: 4,
@@ -205,6 +205,8 @@ export function findLevel(id) {
 export const API_REFERENCE = [
   { sig: 'get_map()', desc: 'แผนที่เป็น list ของ string: map[y][x] เป็น . ทางเดิน หรือ # กำแพง' },
   { sig: 'get_target()', desc: 'พิกัดแท่นข้อมูล {"x": ..., "y": ...}' },
+  { sig: 'get_cost_map()', desc: 'ตารางพลังงาน: cost[y][x] คือพลังงานที่ใช้เมื่อเดินเข้าช่องนั้น (หญ้า 1, ทราย 2, โคลน 4, หิมะ 7, กำแพง None)' },
+  { sig: 'get_energy()', desc: 'พลังงานทั้งหมดที่ใช้เดินไปแล้วในรอบนี้' },
   { sig: 'can_move("right")', desc: 'ตรวจทาง up/down/left/right โดยไม่เดินและไม่ใช้เวลา' },
   { sig: 'mark(x, y, "visited")', desc: 'แสดงสีทีละจังหวะ: visited ฟ้า / frontier ทอง / path เขียว โดยไม่เพิ่มก้าวเดิน' },
   { sig: 'move_up() / move_down()', desc: 'เดินขึ้น / ลง 1 ช่อง (คืน True ถ้าเดินได้)' },

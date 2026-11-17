@@ -49,7 +49,7 @@ export default function App() {
   const isUnlocked = useCallback(
     (id) => {
       const i = allLevels.findIndex((l) => l.id === id);
-      return i === 0 || id === '2-1' || progress.completed.includes(allLevels[i - 1].id) || progress.completed.includes(id);
+      return i === 0 || id === '2-1' || id === '3-1' || progress.completed.includes(allLevels[i - 1].id) || progress.completed.includes(id);
     },
     [progress.completed]
   );

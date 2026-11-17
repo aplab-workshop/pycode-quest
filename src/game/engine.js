@@ -18,7 +18,14 @@ const LEGEND = {
   T: () => ({ type: 'tree' }),
   O: () => ({ type: 'ore' }),
   '#': () => ({ type: 'rock' }),
+  d: () => ({ type: 'sand' }),
+  m: () => ({ type: 'mud' }),
+  '^': () => ({ type: 'snow' }),
 };
+
+// Energy cost of stepping onto a cell (rock is impassable)
+export const TERRAIN_COST = { sand: 2, mud: 4, snow: 7 };
+export const cellCost = (cell) => (cell.type === 'rock' ? null : TERRAIN_COST[cell.type] ?? 1);
 
 const DIRS = {
   up: [0, -1],
@@ -46,7 +53,7 @@ export function createWorld(level) {
     tick: 0,
     theme: level.theme || 'farm',
     marks: {},
-    stats: { moves: 0, explored: 0 },
+    stats: { moves: 0, explored: 0, energy: 0 },
   };
 }
 
@@ -89,6 +96,7 @@ export function performAction(world, name, arg) {
       const free = inside && world.cells[ny][nx].type !== 'rock';
       if (free) {
         world.stats.moves += 1;
+        world.stats.energy += cellCost(world.cells[ny][nx]);
         robot.x = nx;
         robot.y = ny;
       }
@@ -127,6 +135,10 @@ export function performAction(world, name, arg) {
 
     case 'get_map':
       return { value: world.cells.map(row => row.map(c => c.type === 'rock' ? '#' : '.').join('')), timed: false };
+    case 'get_cost_map':
+      return { value: world.cells.map(row => row.map(cellCost)), timed: false };
+    case 'get_energy':
+      return { value: world.stats.energy, timed: false };
     case 'get_target':
       return { value: world.target, timed: false };
     case 'can_move': {
@@ -150,6 +162,7 @@ export function performAction(world, name, arg) {
           type: here.type,
           ripe: isRipe(here),
           growth: here.type === 'wheat' ? here.growth : 0,
+          cost: cellCost(here),
           x: robot.x,
           y: robot.y,
         },
